@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+
+# 打包产物 / 本地私钥（勿入库）
+*.crx
+*.pem
+
+# 临时文件
+_tmpprofile/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini

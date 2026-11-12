@@ -1,0 +1,59 @@
+/* 界面翻译 · 注入样式 */
+
+/* 中英对照：原文 + 译文包在同一个 inline-block 里，
+ * 在 flex / grid 容器中只算一个子元素，不会把译文挤到右边。 */
+.uizh-pair {
+  display: inline-block;
+  vertical-align: baseline;
+  max-width: 100%;
+}
+
+.uizh-src {
+  display: block;
+  color: inherit;
+}
+
+.uizh-zh {
+  display: block;
+  font-size: 0.9em;
+  line-height: 1.35;
+  opacity: 0.78;
+  color: inherit;
+  font-style: normal;
+  margin-top: 1px;
+  word-break: break-word;
+}
+
+.uizh-tip {
+  position: fixed;
+  z-index: 2147483646;
+  max-width: 460px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: rgba(24, 24, 28, 0.94);
+  color: #f2f2f2;
+  font: 12px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.uizh-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  max-width: 360px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: rgba(24, 24, 28, 0.94);
+  color: #f2f2f2;
+  font: 13px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
