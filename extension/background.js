@@ -22,8 +22,10 @@ const DEFAULTS = {
   target: 'zh'
 };
 
-const CACHE_KEY = 'uizh_cache_v1';
+const CACHE_KEY = 'uizh_cache_v2';
 const CACHE_MAX = 6000;
+// v1 的缓存里可能存着「引擎把原文吐回来」的条目（兜底失败时原文被当成译文写了进去），
+// 那种条目一旦进缓存，这句话就永远翻不出来。升到 v2 直接丢弃旧缓存。
 // 注意：浏览器禁止脚本设置 User-Agent / Referer 请求头（会被静默丢弃）。
 // 2026-11-11 实测该接口不依赖这两个头，故只用合法的 referrer 选项。
 
@@ -246,6 +248,27 @@ function cacheKey(engine, model, text) {
   return (engine === 'llm' ? 'L|' + model : 'F') + '|' + text;
 }
 
+function normText(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+}
+
+const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
+const LATIN_RE = /[A-Za-z]{2}/;
+
+/* 这条结果算不算「真的翻了」？
+ * 引擎偶尔会把原文原样吐回（排队降级、无效字符、短 token），兜底失败时我们也会
+ * 拿原文占位。这类结果**不能进缓存**——缓存是永久的，一旦存进去，这句话以后
+ * 每次都会拿到「英文译文」，页面上就会出现两行一模一样的英文。 */
+function isTranslated(src, dst) {
+  if (typeof dst !== 'string' || !dst.trim()) return false;
+  const a = normText(src);
+  const b = normText(dst);
+  if (!b || a === b) return false;
+  // 目标是中文：原文有英文而结果没有一个汉字，视为没翻出来
+  if (LATIN_RE.test(a) && !CJK_RE.test(b)) return false;
+  return true;
+}
+
 async function handleTranslate(texts, cfg) {
   const out = new Array(texts.length);
   const todo = [];
@@ -262,14 +285,18 @@ async function handleTranslate(texts, cfg) {
     ? await llmTranslate(todo, cfg)
     : await freeTranslate(todo);
 
+  let fresh = 0;
   for (let k = 0; k < translated.length; k++) {
     const i = todoIdx[k];
     out[i] = translated[k];
-    cache[cacheKey(cfg.engine, cfg.model, todo[k])] = translated[k];
-    cacheDirty = true;
+    if (isTranslated(todo[k], translated[k])) {
+      cache[cacheKey(cfg.engine, cfg.model, todo[k])] = translated[k];
+      cacheDirty = true;
+      fresh++;
+    }
   }
   scheduleFlush();
-  return { ok: true, results: out, cached: texts.length - todo.length };
+  return { ok: true, results: out, cached: texts.length - todo.length, untranslated: todo.length - fresh };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

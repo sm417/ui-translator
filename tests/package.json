@@ -1,11 +1,11 @@
 {
   "name": "ui-translator-tests",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "自检与基准：在 jsdom 里真跑 content.js / background.js，走真实翻译接口",
   "type": "module",
   "scripts": {
-    "test": "node test-0-api-and-headers.mjs && node test-1-skip-code-and-restore.mjs && node test-2-dedup-and-bilingual.mjs && node test-3-popup-reinject.mjs && node test-4-bilingual-structure.mjs && node test-5-concurrency-alignment.mjs && node test-6-background-retry-cache.mjs && node test-7-auto-translate.mjs",
+    "test": "node test-0-api-and-headers.mjs && node test-1-skip-code-and-restore.mjs && node test-2-dedup-and-bilingual.mjs && node test-3-popup-reinject.mjs && node test-4-bilingual-structure.mjs && node test-5-concurrency-alignment.mjs && node test-6-background-retry-cache.mjs && node test-7-auto-translate.mjs && node test-8-untranslated-not-cached.mjs",
     "bench": "node bench-1-batch-size.mjs && node bench-2-concurrency.mjs && node bench-3-stability.mjs && node bench-4-retry-missed.mjs"
   },
   "devDependencies": {

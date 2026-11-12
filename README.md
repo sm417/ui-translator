@@ -90,13 +90,16 @@ node test-4-bilingual-structure.mjs    # 对照结构与 flex 占位
 node test-5-concurrency-alignment.mjs  # 并发对位（300 元素零错配）
 node test-6-background-retry-cache.mjs # 重试 / 兜底 / 缓存
 node test-7-auto-translate.mjs         # 自动模式
+node test-8-untranslated-not-cached.mjs # 未翻译结果不污染缓存
 ```
 
-当前结果：15/15、5/5、7/7、13/13、11/11、11/11、28/28。`tests/bench-*.mjs` 是 4 个联网基准，用来验证上面那张速度表，跑一次 1~2 分钟。
+当前结果：15/15、5/5、7/7、13/13、11/11、11/11、28/28、13/13。`tests/bench-*.mjs` 是 4 个联网基准，用来验证上面那张速度表，跑一次 1~2 分钟。
 
 ## 已知限制
 
 - **带「字母 + 数字」token 的短句会被原样返回**（如 `net16`、`Layer 3`）。这是免费引擎的确定性行为：单条重试 3 次、整批重发 3 轮，结果一字不差。真实界面短语（`Run All Cells`、`Kernel`、`Save As`）不受影响。漏翻率约 1%。
+
+  这类「没翻出来」的结果**不会进缓存**（v1.2.1 起）：下次打开同一页会重新请求，而不是把英文当成译文永久显示。
 - **`chrome://` 页面、应用商店页、PDF 阅读器**不允许扩展注入，属浏览器限制。
 - **对照模式每处文字占两行**，这是对照的固有代价；密集工具栏觉得挤就切「直接替换」。
 - 免费接口不保证长期可用。挂了就在弹窗里切大模型引擎，或改 `extension/background.js` 里的接口地址。

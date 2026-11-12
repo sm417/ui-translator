@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "界面翻译 · UI Translator",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "只翻界面文字、自动跳过代码块。点一次之后新页面自动翻译；支持腾讯免费翻译与大模型翻译，替换/双语两种显示，悬停可看原文。",
   "permissions": [
     "storage",

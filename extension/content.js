@@ -249,7 +249,12 @@
       const applyJob = (job) => {
         const pieces = job.got.map((v, si) => (v ? v : job.segs[si]));
         const zh = pieces.join(' ').replace(/\s+/g, ' ').trim();
-        if (!zh || zh === job.key) return;
+        // 和原文比要用同一种规范化：原节点的 nodeValue 常带首尾空白/换行，
+        // 直接比会把「英文原样返回」当成译文插进去，界面上就出现两行一样的英文。
+        const srcNorm = String(job.key || '').replace(/\s+/g, ' ').trim();
+        if (!zh || zh === srcNorm) return;
+        // 原文有英文而译文一个汉字都没有 → 引擎把原文吐回来了，同样不写
+        if (/[A-Za-z]{2}/.test(srcNorm) && !/[\u4e00-\u9fff\u3400-\u4dbf]/.test(zh)) return;
         const refs = uniq.get(job.key) || [];
         for (const ref of refs) {
           try {
