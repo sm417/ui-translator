@@ -1,6 +1,6 @@
 {
   "name": "ui-translator-tests",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "自检与基准：在 jsdom 里真跑 content.js / background.js，走真实翻译接口",
   "type": "module",

@@ -5,8 +5,10 @@ node_modules/
 *.crx
 *.pem
 
-# 临时文件
+# 临时文件 / 调试产物（截图、headless 浏览器配置等）
 _tmpprofile/
+_temporary/
+_临时调试/
 
 # 系统
 .DS_Store

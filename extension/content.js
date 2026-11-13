@@ -12,8 +12,25 @@
     '.CodeMirror', '.cm-editor', '.cm-content', '.monaco-editor',
     '.jp-InputArea .cm-editor', '.jp-Cell-inputWrapper .cm-editor',
     '[contenteditable="true"]', '[contenteditable=""]',
-    '.uizh-zh', '.uizh-tip', '.uizh-toast', '.uizh-pair', '.uizh-src'
+    '.uizh-zh', '.uizh-tip', '.uizh-toast', '.uizh-pair', '.uizh-src',
+    '.uizh-blk', '[data-uizh-done]'
   ].join(',');
+
+  /* 抽取块内文字时要跳过的东西：脚本、图形，以及我们自己插进去的节点。
+   * 注意这里不含 code/samp —— 段落里夹着的行内代码要原样留在句子里送翻，
+   * 拆出去反而会把语义切断。 */
+  const TEXT_SKIP_SEL = 'script,style,noscript,svg,math,canvas,.uizh-blk,.uizh-pair,.uizh-src,.uizh-zh,.uizh-tip,.uizh-toast';
+
+  /* 这些元素本身就是独立控件，绝不能被「整块翻译」吞掉 */
+  const CTRL_SEL = 'button,select,input,textarea,progress,meter,' +
+    '[role="button"],[role="tab"],[role="menuitem"],[role="switch"],[role="checkbox"],[role="radio"]';
+
+  /* 可以整块翻、且译文挂在下面的块级显示类型 */
+  const BLOCK_DISP = new Set([
+    'block', 'flow-root', 'list-item', 'table', 'table-row', 'table-row-group',
+    'table-header-group', 'table-footer-group', 'table-cell', 'table-caption',
+    'flex', 'inline-flex', 'grid', 'inline-grid', '-webkit-box', '-webkit-flex'
+  ]);
 
   const ATTRS = ['title', 'placeholder', 'aria-label', 'alt'];
   const ATTR_SEL = ATTRS.map(a => '[' + a + ']').join(',');
@@ -64,10 +81,107 @@
     return v;
   }
 
-  function collectTextNodes() {
-    const out = [];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+  /* ---------- 单元收集：整块优先，行内兜底 ----------
+   *
+   * 老做法是「一个文本节点 = 一条待翻文本」。遇到 PubMed 这种
+   * `<h1>Gut metabolism links <a>precision nutrition</a>, … <i>Drosophila melanogaster</i>.</h1>`
+   * 的结构，一句话被拆成五六段各自去翻：译文彼此不连贯（"精度 营养"），
+   * 每段还各套一层 inline-block 框，行高被撑爆、英文被裁掉。
+   *
+   * 新做法：
+   *   · 容器内部全是行内内容（p / h1 / li / td / div …）→ 整个容器当成**一个**单元，
+   *     译文作为块级元素挂在容器末尾，原文的行内标签一个都不动。
+   *   · 容器里有块级子元素 / flex / grid 子项 / 独立控件 → 继续往下拆，逐个处理。
+   *   · 剩下的零散文本节点（导航链接、按钮文案）→ 走原来的行内对照。
+   */
+
+  let dispCache = new Map();
+
+  /* getComputedStyle 拿不到 display 时（元素未渲染 / 环境没有默认样式表）
+   * 用标签名兜底，免得把 <span> 当成块级容器。 */
+  const INLINE_TAGS = new Set([
+    'A', 'ABBR', 'B', 'BDI', 'BDO', 'BIG', 'BR', 'CITE', 'CODE', 'DATA', 'DEL', 'DFN',
+    'EM', 'FONT', 'I', 'IMG', 'INS', 'KBD', 'LABEL', 'MARK', 'NOBR', 'OUTPUT', 'Q',
+    'RP', 'RT', 'RUBY', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP',
+    'TIME', 'TT', 'U', 'VAR', 'WBR', 'BUTTON', 'SELECT', 'INPUT', 'TEXTAREA',
+    'PROGRESS', 'METER', 'CANVAS', 'SVG', 'IFRAME', 'AUDIO', 'VIDEO', 'PICTURE'
+  ]);
+
+  function dispOf(el) {
+    let d = dispCache.get(el);
+    if (d === undefined) {
+      try { d = getComputedStyle(el).display || ''; } catch (e) { d = ''; }
+      if (!d) d = INLINE_TAGS.has(el.tagName) ? 'inline' : 'block';
+      dispCache.set(el, d);
+    }
+    return d;
+  }
+
+  function isFlexGrid(d) {
+    return d === 'flex' || d === 'inline-flex' || d === 'grid' || d === 'inline-grid';
+  }
+
+  /* 把容器里所有可见文字拼成一个字符串（跳过脚本/图形/自己的译文节点），
+   * <br> 视作空格。段落里的 <i> <a> <span> 会自然拼回完整句子。 */
+  function textOf(root) {
+    let s = '';
+    const rec = (node) => {
+      for (let c = node.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3) { s += c.nodeValue; continue; }
+        if (c.nodeType !== 1) continue;
+        if (c.tagName === 'BR') { s += ' '; continue; }
+        if (c.matches(TEXT_SKIP_SEL)) continue;
+        rec(c);
+      }
+    };
+    rec(root);
+    return s.replace(/\s+/g, ' ').trim();
+  }
+
+  /* 内部是否已经有「需要单独处理的子项」 */
+  function hasSeparateChild(el) {
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) {
+      if (inSkip(c)) continue;
+      if (!visOf(c)) continue;
+      const d = dispOf(c);
+      if (d === 'contents' || isFlexGrid(d) || BLOCK_DISP.has(d)) return true;
+      if (c.matches(CTRL_SEL)) return true;
+    }
+    return false;
+  }
+
+  /* 只有一个元素子节点、且没有实质文字（li>a、div>a）→ 取出那个子节点 */
+  function onlyChildElement(el) {
+    let elem = null;
+    for (let k = el.firstChild; k; k = k.nextSibling) {
+      if (k.nodeType === 3) { if (k.nodeValue.trim()) return null; continue; }
+      if (k.nodeType !== 1) continue;
+      if (elem) return null;
+      elem = k;
+    }
+    return elem;
+  }
+
+  /* 短文案 + 控件语境 → 保持行内对照（按钮、表头、导航项塞块级译文会撑坏布局） */
+  const INLINE_HOST_SEL = 'a,button,nav,menu,label,th,td,dt,dd,option,summary,' +
+    '[role="button"],[role="link"],[role="menuitem"],[role="tab"],[role="navigation"],[role="search"]';
+
+  function preferInline(el, text, d) {
+    if (/^inline/.test(d) && !isFlexGrid(d)) return true;   // 行内元素里放不下块级译文
+    if (text.length > 40) return false;
+    if (el.matches(INLINE_HOST_SEL)) return true;
+    if (el.closest(INLINE_HOST_SEL)) return true;
+    /* flex/grid 的子项在计算样式里会被 blockify（display 变 block），
+     * 但短文案（"Open"/"Close" 这类）塞块级译文会把一行拆成两段，仍走行内对照。 */
+    const p = el.parentElement;
+    if (p && isFlexGrid(dispOf(p))) return true;
+    return false;
+  }
+
+  function collectTextNodes(root, out, directOnly) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
+        if (directOnly && node.parentNode !== root) return NodeFilter.FILTER_REJECT;
         if (doneNodes.has(node)) return NodeFilter.FILTER_REJECT;
         const t = node.nodeValue;
         if (!t || t.length < 2 || !worthTranslating(t)) return NodeFilter.FILTER_REJECT;
@@ -79,7 +193,49 @@
       }
     });
     let n;
-    while ((n = walker.nextNode())) out.push(n);
+    while ((n = walker.nextNode())) out.push({ kind: 'text', node: n, text: n.nodeValue });
+  }
+
+  function walkItem(el, out) {
+    if (!el || el.nodeType !== 1) return;
+    if (el.hasAttribute('data-uizh-done')) return;
+    if (inSkip(el) || !visOf(el)) return;
+
+    const d = dispOf(el);
+
+    // 单子节点外壳（li>a、td>a）直接下沉，别把壳也算一个单元
+    const single = onlyChildElement(el);
+    if (single && !isFlexGrid(d) && !inSkip(single) && !single.matches(CTRL_SEL)) {
+      return walkItem(single, out);
+    }
+
+    // 容器：块级子元素 / flex 子项 / 控件 → 逐个往下
+    if (d === 'contents' || isFlexGrid(d) || hasSeparateChild(el)) {
+      for (let c = el.firstElementChild; c; c = c.nextElementSibling) walkItem(c, out);
+      collectTextNodes(el, out, true);       // 直接挂在容器下的裸文字
+      return;
+    }
+
+    // 到这里：内部全是行内内容
+    const text = textOf(el);
+    if (!text) return;
+    if (!worthTranslating(text) || preferInline(el, text, d)) {
+      collectTextNodes(el, out, false);
+      return;
+    }
+    /* 短文本 + 多个行内子元素：多是标签堆叠 / 无分隔的链接列表，
+     * 整块拼起来会变成 "Save changesSave changes"，得逐个处理。 */
+    if (text.length <= 40 && el.childElementCount >= 2) {
+      for (let c = el.firstElementChild; c; c = c.nextElementSibling) walkItem(c, out);
+      collectTextNodes(el, out, true);
+      return;
+    }
+    out.push({ kind: 'block', el, text });
+  }
+
+  function collectUnits() {
+    const out = [];
+    if (document.body) walkItem(document.body, out);
     return out;
   }
 
@@ -101,13 +257,42 @@
     return out;
   }
 
+  /* 长文本切分。
+   * 实测（2026-11-12）：把整段 ~1000 字符一次送翻，译文连贯；
+   * 而按 400 字符硬切会把句子从中间断开，引擎还会把「exercise. This」当成术语
+   * 保护起来，吐出「适度 exercises.This组合的方法…」这种半英半中的结果。
+   * 所以阈值放到 1200，超长文本才切，且只在句末切。 */
+  const SEG_MAX = 1200;
+
+  function hardSplit(s, max) {
+    const out = [];
+    let rest = s;
+    while (rest.length > max) {
+      let cut = -1;
+      for (let i = max; i > max * 0.6; i--) {
+        const c = rest[i];
+        if (c === ',' || c === ';' || c === ' ' || c === '\t') { cut = i; break; }
+      }
+      if (cut < 0) cut = max;
+      out.push(rest.slice(0, cut + 1).trim());
+      rest = rest.slice(cut + 1).trim();
+    }
+    if (rest) out.push(rest);
+    return out;
+  }
+
   function splitLong(text) {
-    if (text.length <= 400) return [text];
+    if (text.length <= SEG_MAX) return [text];
     const parts = text.split(/(?<=[.!?;。！？；])\s+/);
     const out = [];
     let cur = '';
     for (const p of parts) {
-      if (cur && (cur.length + 1 + p.length) > 400) { out.push(cur); cur = p; }
+      if (p.length > SEG_MAX) {                 // 单句就超长：按逗号/空格再切
+        if (cur) { out.push(cur); cur = ''; }
+        out.push(...hardSplit(p, SEG_MAX));
+        continue;
+      }
+      if (cur && (cur.length + 1 + p.length) > SEG_MAX) { out.push(cur); cur = p; }
       else cur = cur ? cur + ' ' + p : p;
     }
     if (cur) out.push(cur);
@@ -182,6 +367,17 @@
     });
   }
 
+  /* 被 -webkit-line-clamp 截断的元素（搜索结果里的两行标题最常见）：
+   * 译文塞进元素内部会被一并裁掉，必须放到元素的兄弟位置。 */
+  function isClamped(el) {
+    try {
+      const cs = getComputedStyle(el);
+      const lc = cs.webkitLineClamp || cs.getPropertyValue('-webkit-line-clamp') ||
+        cs.getPropertyValue('line-clamp') || 'none';
+      return !!lc && lc !== 'none' && lc !== '0' && lc !== 'normal';
+    } catch (e) { return false; }
+  }
+
   /* ---------- 主流程 ---------- */
 
   async function translatePage(settings, opts) {
@@ -202,10 +398,12 @@
     try {
       visCache = new Map();
       skipCache = new Map();
-      const nodes = collectTextNodes();
+      dispCache = new Map();
+      const units = collectUnits();
       const attrEls = collectAttrEls();
       visCache.clear();
       skipCache.clear();
+      dispCache.clear();
 
       // 去重：同一段文字只翻一次
       const uniq = new Map();          // text -> refs[]
@@ -213,7 +411,10 @@
         if (!uniq.has(text)) uniq.set(text, []);
         uniq.get(text).push(ref);
       };
-      for (const n of nodes) push(n.nodeValue, { kind: 'text', node: n, orig: n.nodeValue });
+      for (const u of units) {
+        if (u.kind === 'block') push(u.text, { kind: 'block', el: u.el, text: u.text });
+        else push(u.text, { kind: 'text', node: u.node, orig: u.text });
+      }
       for (const a of attrEls) push(a.value, { kind: 'attr', el: a.el, attr: a.attr, orig: a.value });
 
       const keys = Array.from(uniq.keys());
@@ -235,9 +436,22 @@
       }
 
       const total = flat.length;
-      const starts = [];
-      for (let i = 0; i < total; i += chunkSize) starts.push(i);
-      const totalChunks = starts.length;
+      /* 分批时同时受「条数」和「总字符数」约束：
+       * 整段译文动辄上千字符，40 条拼一批会撑爆接口的请求体，
+       * 失败一次就是整批回退原文，所以按字符数也压一道。 */
+      const maxChars = engine === 'llm' ? 12000 : 6000;
+      const batches = [];
+      for (let i = 0; i < total;) {
+        let acc = 0, n = 0;
+        while (i + n < total && n < chunkSize) {
+          const len = flat[i + n].length + 1;
+          if (n > 0 && acc + len > maxChars) break;
+          acc += len; n++;
+        }
+        batches.push({ start: i, size: n });
+        i += n;
+      }
+      const totalChunks = batches.length;
 
       let appeared = 0;
       let doneChunks = 0;
@@ -246,9 +460,49 @@
       if (!silent) toast('翻译中… 0/' + totalChunks);
 
       // 一段的译文全部到齐就立刻写回，不等其余批次
+      const applyBlock = (ref, zh) => {
+        const el = ref.el;
+        if (!el || el.hasAttribute('data-uizh-done')) return;
+        if (el !== document.body && !document.body.contains(el)) return;
+        el.setAttribute('data-uizh-done', '1');
+        // 用 span + display:block，避免往 <p>/<h1> 里塞 <div> 造成非法嵌套
+        const zhEl = document.createElement('span');
+        zhEl.className = 'uizh-blk';
+        zhEl.textContent = zh;
+        const parent = el.parentNode;
+        const clamped = isClamped(el) && parent && parent !== el;
+        if (bilingual) {
+          if (clamped) parent.insertBefore(zhEl, el.nextSibling);
+          else el.appendChild(zhEl);
+          records.push({ kind: 'block', el, zhEl });
+        } else if (clamped) {
+          // 截断元素没法「藏内容」还保持高度，干脆整块收起，译文紧跟在后面
+          parent.insertBefore(zhEl, el.nextSibling);
+          const prev = el.style.display;
+          el.style.display = 'none';
+          records.push({ kind: 'block', el, zhEl, prevDisplay: prev });
+        } else {
+          // 仅译文：原文整包藏起来（结构、链接都留着，还原时原样搬回）
+          const box = document.createElement('span');
+          box.className = 'uizh-src-hidden';
+          while (el.firstChild) box.appendChild(el.firstChild);
+          el.appendChild(box);
+          el.appendChild(zhEl);
+          records.push({ kind: 'block', el, zhEl, box });
+        }
+        if (settings.hover) hoverMap.set(el, ref.text);
+        appeared++;
+      };
+
       const applyJob = (job) => {
         const pieces = job.got.map((v, si) => (v ? v : job.segs[si]));
-        const zh = pieces.join(' ').replace(/\s+/g, ' ').trim();
+        // 分段拼接：中文之间不留空格，中英之间留一个
+        const zh = pieces.reduce((acc, p) => {
+          if (!acc) return p;
+          const a = acc.slice(-1), b = p.slice(0, 1);
+          const cjk = /[\u4e00-\u9fff\u3400-\u4dbf\u3000-\u303f\uff01-\uff65]/;
+          return (cjk.test(a) && cjk.test(b)) ? acc + p : acc + ' ' + p;
+        }, '').replace(/\s+/g, ' ').trim();
         // 和原文比要用同一种规范化：原节点的 nodeValue 常带首尾空白/换行，
         // 直接比会把「英文原样返回」当成译文插进去，界面上就出现两行一样的英文。
         const srcNorm = String(job.key || '').replace(/\s+/g, ' ').trim();
@@ -258,6 +512,7 @@
         const refs = uniq.get(job.key) || [];
         for (const ref of refs) {
           try {
+            if (ref.kind === 'block') { applyBlock(ref, zh); continue; }
             if (ref.kind === 'text') {
               const node = ref.node;
               if (!node.parentNode) continue;
@@ -301,8 +556,9 @@
         for (;;) {
           const ci = cursor++;
           if (ci >= totalChunks) return;
-          const start = starts[ci];
-          const slice = flat.slice(start, start + chunkSize);
+          const batch = batches[ci];
+          const start = batch.start;
+          const slice = flat.slice(start, start + batch.size);
           let results;
           try {
             results = await ask(slice, engine);
@@ -353,6 +609,19 @@
   function restore() {
     for (const r of records) {
       try {
+        if (r.kind === 'block') {
+          if (r.zhEl && r.zhEl.parentNode) r.zhEl.parentNode.removeChild(r.zhEl);
+          if (r.box) {
+            const host = r.box.parentNode;
+            if (host) { while (r.box.firstChild) host.insertBefore(r.box.firstChild, r.box); }
+            if (r.box.parentNode) r.box.parentNode.removeChild(r.box);
+          }
+          if (r.el) {
+            if (r.prevDisplay !== undefined) r.el.style.display = r.prevDisplay;
+            r.el.removeAttribute('data-uizh-done');
+          }
+          continue;
+        }
         if (r.pair) {
           // 对照模式：把原 Text 节点搬回原位，再丢掉包壳
           const host = r.pair.parentNode;
@@ -372,6 +641,7 @@
       el.removeAttribute('data-uizh-attr');
       el.removeAttribute('data-uizh-attr-orig');
     });
+    document.querySelectorAll('[data-uizh-done]').forEach(el => el.removeAttribute('data-uizh-done'));
     window.__UIZH__.on = false;
     stopObserver();
   }

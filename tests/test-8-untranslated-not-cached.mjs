@@ -114,8 +114,8 @@ async function pageWith(resultsFn, nodeHtml) {
   const { doc, r } = await pageWith(
     (texts) => texts.slice(),
     '<h1 id="t">\n            Growth and size control during development.\n          </h1>');
-  chk('原样返回时不插入 .uizh-zh', doc.querySelectorAll('.uizh-zh').length === 0,
-    '数量 ' + doc.querySelectorAll('.uizh-zh').length);
+  chk('原样返回时不插入 .uizh-zh / .uizh-blk', doc.querySelectorAll('.uizh-zh, .uizh-blk').length === 0,
+    '数量 ' + doc.querySelectorAll('.uizh-zh, .uizh-blk').length);
   chk('原样返回时不产生 .uizh-pair', doc.querySelectorAll('.uizh-pair').length === 0);
   chk('原文一字未动', doc.querySelector('#t').textContent === '\n            Growth and size control during development.\n          ');
   chk('页面如实报告 0 处', r.ok && r.translated === 0, 'translated=' + r.translated);
@@ -126,8 +126,8 @@ async function pageWith(resultsFn, nodeHtml) {
   const { doc } = await pageWith(
     (texts) => texts.map(t => t.replace(/\.$/, '')),
     '<h1 id="t">Growth and size control during development.</h1>');
-  chk('只差标点的英文也不插入', doc.querySelectorAll('.uizh-zh').length === 0,
-    '数量 ' + doc.querySelectorAll('.uizh-zh').length);
+  chk('只差标点的英文也不插入', doc.querySelectorAll('.uizh-zh, .uizh-blk').length === 0,
+    '数量 ' + doc.querySelectorAll('.uizh-zh, .uizh-blk').length);
 }
 
 // C3：反向对照 —— 真给中文时必须插入，否则上面的断言可能是假通过
@@ -135,7 +135,7 @@ async function pageWith(resultsFn, nodeHtml) {
   const { doc } = await pageWith(
     () => ['开发期间的生长和大小控制。'],
     '<h1 id="t">\n            Growth and size control during development.\n          </h1>');
-  const zh = doc.querySelectorAll('.uizh-zh');
+  const zh = doc.querySelectorAll('.uizh-blk');
   chk('给中文时正常插入 1 行（反向对照）', zh.length === 1, '数量 ' + zh.length);
   chk('插入的文字是中文', zh[0] && zh[0].textContent === '开发期间的生长和大小控制。',
     zh[0] && JSON.stringify(zh[0].textContent));

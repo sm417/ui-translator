@@ -18,7 +18,7 @@ for (let i = 0; i < 300; i++) {
 }
 
 // 300 个独立标签 + 3 处完全重复 + 一段超长正文 + 一段代码
-const longPara = Array.from({ length: 5 }, (_, i) =>
+const longPara = Array.from({ length: 12 }, (_, i) =>
   `This is sentence number ${i} describing how the analysis pipeline groups samples by age and computes the median lifespan for each cohort`
 ).join('. ') + '.';
 
@@ -89,7 +89,8 @@ console.log('===== A) 并发对位（桩：每条译文 = "译:" + 原文）====
   let wrong = 0, missing = 0;
   for (const el of items) {
     const want = '译:' + labels[Number(el.dataset.i)];
-    const got = el.textContent.trim();
+    const blk = el.querySelector('.uizh-blk');
+    const got = (blk ? blk.textContent : el.textContent).trim();
     if (got === labels[Number(el.dataset.i)]) missing++;
     else if (got !== want) { wrong++; if (wrong <= 3) console.log('    错配:', el.dataset.i, '=>', got); }
   }
@@ -103,7 +104,8 @@ console.log('===== A) 并发对位（桩：每条译文 = "译:" + 原文）====
   chk('重复文字只发 1 条', stats.sentTexts.filter(t => t === 'Save changes').length === 1);
 
   // 3. 长段落跨批拆分后拼接正确
-  const longTxt = doc.querySelector('#long').textContent.trim();
+  const longBlk = doc.querySelector('#long .uizh-blk');
+  const longTxt = (longBlk ? longBlk.textContent : doc.querySelector('#long').textContent).trim();
   const segCount = longTxt.split(' ').filter(s => s.startsWith('译:')).length;
   chk('长段落被拆成多段且每段都翻到', segCount >= 2, segCount + ' 段');
   // 桩把译文写成 "译:"+原文：去掉前缀后应与原文逐字一致（证明拆段拼接没丢、没重）

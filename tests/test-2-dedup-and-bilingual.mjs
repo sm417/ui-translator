@@ -58,12 +58,16 @@ await new Promise(r2 => setTimeout(r2, 300));
 
 const doc = window.document;
 const zhSpans = doc.querySelectorAll('.uizh-zh');
+const zhBlocks = doc.querySelectorAll('.uizh-blk');
 const firstP = doc.querySelector('p.a');
+const longP = doc.querySelector('#long');
 
 const checks = [
   ['3 句相同文字只发 1 条', calls.length >= 1 && calls[0].filter(t => t === 'Save changes').length === 1],
-  ['长段落被拆成多段发送', calls[0].length > 2],
-  ['双语模式插入了译文节点', zhSpans.length >= 4],
+  ['一批能装下多条不同文本', calls[0].length >= 2],
+  ['双语模式插入了译文节点', zhSpans.length + zhBlocks.length >= 4],
+  ['三条重复段落各自都插了译文', doc.querySelectorAll('p.a .uizh-blk').length === 3],
+  ['长段落只产出一条整段译文', longP.querySelectorAll('.uizh-blk').length === 1],
   ['原文仍然保留', firstP.textContent.includes('Save changes')],
   ['译文出现在同级', firstP.textContent.includes('保存') || firstP.textContent.includes('保存更改')]
 ];

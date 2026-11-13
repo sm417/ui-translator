@@ -66,7 +66,7 @@ const pairInLabel = q('#lbl').querySelector('.uizh-pair');
 
 const checks = [
   ['翻译有产出', r.ok && r.translated >= 3],
-  ['每个译文都包在 .uizh-pair 里', pairs.length >= 3],
+  ['短标签仍走行内对照', pairs.length >= 3],
   ['pair 结构正确（src + zh 两个块）', pairs.every(p =>
     p.children.length === 2 &&
     p.children[0].classList.contains('uizh-src') &&
@@ -76,7 +76,9 @@ const checks = [
   ['按钮文字译文已加', /[\u4e00-\u9fff]/.test(q('#lbl').textContent)],
   ['原文与译文顺序是"原文在上"', pairInLabel && pairInLabel.textContent.indexOf(orig.lbl) === 0],
   ['同一行两个 span 各自独立成对', q('#c1').children.length === 1 && q('#c2').children.length === 1],
-  ['段落也成对', !!q('#p1').querySelector('.uizh-pair')]
+  ['整段改为一条块级译文（不再逐句拆碎）', q('#p1').querySelectorAll('.uizh-blk').length === 1],
+  ['整段里没有行内碎块', q('#p1').querySelectorAll('.uizh-pair').length === 0],
+  ['整段英文原文完整保留', q('#p1').textContent.includes(orig.p1.trim())]
 ];
 
 // 还原
@@ -84,6 +86,7 @@ await send({ type: 'restore' });
 await new Promise(x => setTimeout(x, 150));
 
 checks.push(['还原后 .uizh-pair 全部消失', doc.querySelectorAll('.uizh-pair').length === 0]);
+checks.push(['还原后 .uizh-blk 全部消失', doc.querySelectorAll('.uizh-blk').length === 0]);
 checks.push(['还原后按钮文字逐字复原', q('#lbl').textContent === orig.lbl]);
 checks.push(['还原后段落逐字复原', q('#p1').textContent === orig.p1]);
 checks.push(['还原后 span 子元素数归位', q('#lbl').children.length === 0 || q('#lbl').textContent === orig.lbl]);

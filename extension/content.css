@@ -24,6 +24,37 @@
   word-break: break-word;
 }
 
+/* 块级译文：整段/整标题翻完，挂在原文下方单独占行。
+ * 原文的行内标签（<i> <a> <span>）一个都不动，所以不会再出现
+ * 「一句话被切成几截、每截各套一个框」的排版爆掉。 */
+.uizh-blk {
+  display: block;
+  width: 100%;
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  margin: 2px 0 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.95em;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1.6;
+  letter-spacing: normal;
+  text-align: inherit;
+  text-indent: 0;
+  text-transform: none;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  opacity: 0.85;
+  color: inherit;
+}
+
+/* 仅译文模式：把原文整包藏起来，结构保留，方便还原时原样搬回 */
+.uizh-src-hidden {
+  display: none !important;
+}
+
 .uizh-tip {
   position: fixed;
   z-index: 2147483646;
